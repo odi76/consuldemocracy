@@ -10,8 +10,12 @@ usermod -u "$USER_UID" consul 2> /dev/null
 groupmod -g "$USER_GID" consul 2> /dev/null
 usermod -g "$USER_GID" consul 2> /dev/null
 
-chown -R -h "$USER_UID" "$BUNDLE_PATH"
-chgrp -R -h "$USER_GID" "$BUNDLE_PATH"
+BUNDLE_PATH="${BUNDLE_PATH:-/usr/local/bundle}"
+
+if [ -d "$BUNDLE_PATH" ]; then
+  chown -R -h "$USER_UID" "$BUNDLE_PATH"
+  chgrp -R -h "$USER_GID" "$BUNDLE_PATH"
+fi
 
 # Remove a potentially pre-existing server.pid for Rails.
 set -e

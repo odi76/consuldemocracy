@@ -9,6 +9,7 @@
 /config/secrets.yml
 /config/deploy-secrets.yml
 /config/maintenance.yml
+/.env
 
 # Logfiles and tempfiles.
 log/*
