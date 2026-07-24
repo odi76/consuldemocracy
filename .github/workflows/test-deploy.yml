@@ -3,7 +3,6 @@ name: test-deploy
 on:
   push:
     branches: [v1.0.x]
-  workflow_dispatch:
 
 permissions:
   contents: read
