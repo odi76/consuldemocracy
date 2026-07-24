@@ -1,0 +1,100 @@
+name: test-deploy
+
+on:
+  push:
+    branches: [v1.0.x]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:14.19
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+        env:
+          POSTGRES_USER: consul
+          POSTGRES_PASSWORD: password
+    env:
+      PGUSER: consul
+      PGPASSWORD: password
+      RAILS_ENV: test
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - uses: actions/setup-node@v6
+        with:
+          cache: npm
+          node-version-file: ".node-version"
+      - run: npm clean-install
+      - name: Install ImageMagick
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
+      - name: Remove image-bundled Chrome
+        run: sudo apt-get purge -y google-chrome-stable
+      - name: Setup Chrome/Chromium 128
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: 128
+          install-chromedriver: true
+          install-dependencies: true
+      - name: Copy secrets and database files
+        run: for i in config/*.example; do cp "$i" "${i/.example}"; done
+      - run: bundle exec rake db:setup
+      - run: bundle exec rake assets:precompile > /dev/null 2>&1
+      - name: Run smoke suite
+        run: |
+          bundle exec rspec \
+            spec/models/user_spec.rb \
+            spec/models/proposal_spec.rb \
+            spec/models/debate_spec.rb \
+            spec/models/budget_spec.rb \
+            spec/system/welcome_spec.rb \
+            spec/system/users_auth_spec.rb
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-screenshots
+          path: tmp/capybara/
+
+  build-and-push:
+    if: github.event_name == 'workflow_dispatch'
+    needs: smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/odi76/consuldemocracy
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha,scope=consul
+          cache-to: type=gha,mode=max,scope=consul
