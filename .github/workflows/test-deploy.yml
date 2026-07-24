@@ -51,7 +51,6 @@ jobs:
       - name: Copy secrets and database files
         run: for i in config/*.example; do cp "$i" "${i/.example}"; done
       - run: bundle exec rake db:setup
-      - run: bundle exec rake assets:precompile > /dev/null 2>&1
       - name: Run smoke suite
         run: |
           bundle exec rspec \
@@ -69,7 +68,6 @@ jobs:
           path: tmp/capybara/
 
   build-and-push:
-    if: github.event_name == 'workflow_dispatch'
     needs: smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 60
