@@ -77,6 +77,8 @@ jobs:
       IMAGE: ghcr.io/odi76/consuldemocracy
     steps:
       - uses: actions/checkout@v6
+      - name: Write git SHA for version endpoint
+        run: echo "${{ github.sha }}" > .git-sha
       - uses: docker/setup-buildx-action@v4
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -103,6 +105,7 @@ jobs:
     env:
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
     steps:
       - name: Install SSH key
         env:
@@ -114,6 +117,24 @@ jobs:
       - name: Restart vps-consul on VPS
         # Remote command is ignored: the key is locked to a forced command
         run: >
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" -o IdentitiesOnly=yes
           -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=60
           "$DEPLOY_USER@$DEPLOY_HOST" deploy
+      - name: Verify new version is live
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SITE_URL: ${{ secrets.DEPLOY_SITE_URL }}
+        run: |
+          for i in $(seq 1 60); do
+            VERSION_SHA=$(curl -s "$SITE_URL/version.json" 2>/dev/null \
+              | jq -r '.sha // empty' 2>/dev/null)
+            MAIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/" 2>/dev/null || echo "000")
+            if [ "$VERSION_SHA" = "$EXPECTED_SHA" ] && [ "$MAIN_STATUS" = "401" ]; then
+              echo "Deploy verified: SHA=$VERSION_SHA, site requires auth (401)"
+              exit 0
+            fi
+            echo "Attempt $i/60: SHA=$VERSION_SHA (expected $EXPECTED_SHA), status=$MAIN_STATUS — retrying in 5s"
+            sleep 5
+          done
+          echo "Deploy verification failed after 5 minutes"
+          exit 1
