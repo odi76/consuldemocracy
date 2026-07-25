@@ -126,9 +126,9 @@ jobs:
           SITE_URL: ${{ secrets.DEPLOY_SITE_URL }}
         run: |
           for i in $(seq 1 60); do
-            VERSION_SHA=$(curl -s "$SITE_URL/version.json" 2>/dev/null \
-              | jq -r '.sha // empty' 2>/dev/null)
-            MAIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/" 2>/dev/null || echo "000")
+            VERSION_SHA=$(curl -sf "$SITE_URL/version.json" \
+              | jq -r '.sha // empty' 2>/dev/null || true)
+            MAIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/" 2>/dev/null; true)
             if [ "$VERSION_SHA" = "$EXPECTED_SHA" ] && [ "$MAIN_STATUS" = "401" ]; then
               echo "Deploy verified: SHA=$VERSION_SHA, site requires auth (401)"
               exit 0
