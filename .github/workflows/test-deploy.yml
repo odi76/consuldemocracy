@@ -95,3 +95,25 @@ jobs:
             ${{ env.IMAGE }}:latest
           cache-from: type=gha,scope=consul
           cache-to: type=gha,mode=max,scope=consul
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+    steps:
+      - name: Install SSH key
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: Restart vps-consul on VPS
+        # Remote command is ignored: the key is locked to a forced command
+        run: >
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes
+          -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=60
+          "$DEPLOY_USER@$DEPLOY_HOST" deploy
